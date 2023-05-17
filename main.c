@@ -6,21 +6,26 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 //TODO добавь копирование прав а не по дефолту фул допуск всем на все (вроде готово)
 //TODO добавь чтобы редачились и файлы в поддиректориях
 
 void create_dir(char *target_dir_name, char *original_dir_name) {
-    mkdir(target_dir_name, 0700);
+    if (mkdir(target_dir_name, 0700) == -1) {
+        perror("mkdir in create_dir return:");
+        return;
+    }
+
     //printf("%s\n",target_dir_name);
 
     struct stat st;
     if (stat(original_dir_name, &st) == -1) {
-        printf("cant get permissions, error!");
+        perror("cant get permissions, stat in create_dir return:");
         return;
     }
     if (chmod(target_dir_name, st.st_mode) == -1) {
-        printf("cant set permissions, error!");
+        perror("cant set permissions, chmod in create_dir return:");
         return;
     }
 }
@@ -29,18 +34,20 @@ void create_reverse_file(char *target_file_name, char *original_file_name) {
     //printf("target_file_name - %s\n", target_file_name);
     int fd = open(target_file_name, O_RDWR | O_CREAT, 0777);
     if (fd == -1) {
-        printf("cant create file, error!");
+        perror("cant create file,open in create_reverse_file return:");
         return;
     }
-    close(fd);
+    if (close(fd) == -1) {
+        perror("close in create_reverse_file return:");
+    }
 
     struct stat st;
     if (stat(original_file_name, &st) == -1) {
-        printf("cant get permissions, error!");
+        perror("cant get permissions,stat in create_reverse_file return:");
         return;
     }
     if (chmod(target_file_name, st.st_mode) == -1) {
-        printf("cant set permissions, error!");
+        perror("cant set permissions,chmod in create_reverse_file return:");
         return;
     }
 
@@ -48,23 +55,48 @@ void create_reverse_file(char *target_file_name, char *original_file_name) {
     FILE *f2 = fopen(target_file_name, "wb");
 
     if (f1 == NULL) {
-        printf("permission of this file -%s is denied\n", original_file_name);
+        perror("cant read source file,open in create_reverse_file return:");
         return;
     }
 
     char input;
-    fseek(f1, -1, SEEK_END);
+    if (fseek(f1, -1, SEEK_END) == -1) {
+        perror("fseek when going to the end of the file in create_reverse_file return:");
+        return;
+    }
 
     while (ftell(f1) > 0) {
-        fread(&input, 1, 1, f1);
-        fwrite(&input, 1, 1, f2);
-        fseek(f1, -2, SEEK_CUR);
-    }
-    fread(&input, 1, 1, f1);
-    fwrite(&input, 1, 1, f2);
+        if (fread(&input, 1, 1, f1) == 0) {
+            perror("fread in create_reverse_file return:");
+            return;
+        }
+        if (fwrite(&input, 1, 1, f2) == -1) {
+            perror("fwrite in create_reverse_file return:");
+            return;
+        }
 
-    fclose(f1);
-    fclose(f2);
+        if (fseek(f1, -2, SEEK_CUR) == -1) {
+            perror("fseek when going to the end of the file in create_reverse_file return:");
+            return;
+        }
+    }
+    if (fread(&input, 1, 1, f1) == 0) {
+        perror("fread in create_reverse_file return:");
+        return;
+    }
+    if (fwrite(&input, 1, 1, f2) == 0) {
+        perror("fwrite in create_reverse_file return:");
+        return;
+    }
+
+    if (fclose(f1) == EOF) {
+        perror("fclose(source) in create_reverse_file return:");
+        return;
+    };
+    if (fclose(f2) == EOF) {
+        perror("fwrite(target_dir) in create_reverse_file return:");
+        return;
+    }
 
     return;
 }
@@ -76,11 +108,11 @@ void create_reverse_dir(char *target_dir_name, char *original_dir_name) {
 
     struct stat st;
     if (stat(original_dir_name, &st) == -1) {
-        printf("cant get permissions, error!");
+        perror("cant get permissions,stat in create_reverse_dir return:");
         return;
     }
     if (chmod(target_dir_name, st.st_mode) == -1) {
-        printf("cant set permissions, error!");
+        perror("cant set permissions,chmod in create_reverse_dir return:");
         return;
     }
 
@@ -89,7 +121,10 @@ void create_reverse_dir(char *target_dir_name, char *original_dir_name) {
 
 char *get_full_name_target_file(char *first_part, char *second_part) {
     char *result = malloc(strlen(first_part) + strlen(second_part) + 1);
-
+    if (result == NULL) {
+        perror("malloc in get_full_name_target_file return:");
+        return NULL;
+    }
     int second_part_len = strlen(second_part);
 
     for (int i = 0; i < second_part_len / 2; i++) {
@@ -106,7 +141,10 @@ char *get_full_name_target_file(char *first_part, char *second_part) {
 
 char *get_full_name_original_file(char *first_part, char *second_part) {
     char *result = malloc(strlen(first_part) + strlen(second_part) + 1);
-
+    if (result == NULL) {
+        perror("malloc in get_full_name_original_file return:");
+        return NULL;
+    }
     strcpy(result, first_part);
     strcat(result, second_part);
 
@@ -119,6 +157,10 @@ char *get_first_part(char *first_part) {
     int len_of_rest = 0;
 
     char *result = (char *) calloc(len_of_first_part + 1, sizeof(char));
+    if (result == NULL) {
+        perror("calloc in get_first_part return:");
+        return NULL;
+    }
 
     for (int i = len_of_first_part - 2; i >= 0; i--) {
         if (first_part[i] == '/') {
@@ -173,6 +215,10 @@ create_reverse_dir(first_part, original_dir_name);*/
 
     struct dirent *dir;
     d = opendir(original_dir_name);
+    if (d == NULL) {
+        perror("opendir in reverse_dir return:");
+        return;
+    }
     if (d) {
         while ((dir = readdir(d)) != NULL) {
             short dir_flag = 0;
@@ -194,7 +240,10 @@ create_reverse_dir(first_part, original_dir_name);*/
 
 
                     char *tmp_dir = (char *) calloc(strlen(first_part) + strlen(dir->d_name) + 2, sizeof(char));
-
+                    if (tmp_dir == NULL) {
+                        perror("calloc for tmp_dir in reverse_dir return:");
+                        return;
+                    }
                     for (int i = 0; i < strlen(first_part) - 1; i++) {
                         tmp_dir[i] = first_part[i];
                     }
